@@ -1,0 +1,107 @@
+---
+title: "PML_PeerAssignment_Moorecj87"
+author: "CM"
+date: "October 12, 2018"
+output: html_document
+---
+
+
+```{r, cache = TRUE, message=FALSE, warning=FALSE}
+
+library(caret)
+library(dplyr)
+library(tidyr)
+library(rattle)
+
+train <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv')
+test <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv')
+
+```
+
+## Prepare Data
+
+Some data preparation is necessary due to a high amount of NA values and highly correlated variables.
+
+1. Remove ID Columns from training and test sets
+2. Remove variables that are mostly NA
+3. Remove variables with zero variance or have high correlation (>0.9).
+
+```{r, cache = TRUE, message=FALSE, warning=FALSE}
+
+#remove ID columns
+train2 <- train[,8:160]
+test2 <- cbind(test[,8:159], "classe" = NA)
+
+#remove variables with large amount of NA
+naCol <- colSums(is.na(train2)) == 0
+train3 <- select(train2, which(naCol==TRUE))
+test3 <- select(test2, which(naCol==TRUE))
+
+#remove near zero vars, highly correlated var (>.9)
+nZVtrain <- nearZeroVar(train3)
+train4 <- train3[,-nZVtrain]
+test4 <- test3[,-nZVtrain]
+
+varTrain <- cor(train4[,-(length(train4))])
+varTrain[is.na(varTrain)] <- 0
+diag(varTrain) <- 0
+varCorr <- findCorrelation(varTrain, cutoff=0.9)
+varCorr <- sort(varCorr)
+train5 <- train4[,-c(varCorr)] 
+test5 <- test4[,-c(varCorr)]
+
+```
+
+## Split Data, Create Models
+
+Due to a large number of non-binary variables we will use prediction tree models.  
+Pre-processing doesn't seem necessary due to the normal distribution and scale of variables.
+
+1. Create validation set from training set with 70/30 split
+2. Decision Tree Model
+3. Random Forest Model
+4. Bagging Model
+
+```{r, cache = TRUE, message=FALSE, warning=FALSE}
+
+#create validation set with .7/.3 split
+inTrain <- c(createDataPartition(train5$classe, p = .7, list = FALSE))
+trainFinal <- train5[inTrain,]
+validateFinal <- train5[-inTrain,]
+
+classMod <- train(classe ~ ., method = "rpart", trainFinal)
+classPred <- predict(classMod, validateFinal)
+
+rfMod <- train(classe ~ ., method = "rf", trainFinal)
+rfPred <- predict(rfMod, validateFinal)
+
+bagMod <- train(classe ~ ., method = "bagFDA", trainFinal)
+bagPred <- predict(bagMod, validateFinal)
+
+```
+
+## Result of Validation
+
+1. Compare accuracy
+
+```{r, cache = TRUE, message=FALSE, warning=FALSE}
+
+confusionMatrix(classPred, validateFinal$classe)$overall
+confusionMatrix(rfPred, validateFinal$classe)$overall
+confusionMatrix(bagPred, validateFinal$classe)$overall
+
+```
+
+## Test Results
+
+1. Use most accurate model (random forest) to predict test data classe
+
+```{r, cache = TRUE, message=FALSE, warning=FALSE}
+
+testFinal <- test5
+rfTestPred <- predict(rfMod, testFinal)
+
+```
+
+
+
